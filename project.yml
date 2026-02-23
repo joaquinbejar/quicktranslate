@@ -1,0 +1,52 @@
+name: QuickTranslate
+options:
+  bundleIdPrefix: com.quicktranslate
+  deploymentTarget:
+    macOS: "13.0"
+  xcodeVersion: "15.0"
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+
+targets:
+  QuickTranslate:
+    type: application
+    platform: macOS
+    sources:
+      - path: QuickTranslate
+        excludes:
+          - "**/*Tests*"
+    settings:
+      base:
+        INFOPLIST_FILE: QuickTranslate/Info.plist
+        CODE_SIGN_ENTITLEMENTS: QuickTranslate/QuickTranslate.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: com.quicktranslate.app
+        PRODUCT_NAME: QuickTranslate
+        COMBINE_HIDPI_IMAGES: true
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        LD_RUNPATH_SEARCH_PATHS:
+          - $(inherited)
+          - "@executable_path/../Frameworks"
+    info:
+      path: QuickTranslate/Info.plist
+      properties:
+        LSUIElement: true
+        CFBundleName: QuickTranslate
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+
+  QuickTranslateTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: QuickTranslateTests
+    dependencies:
+      - target: QuickTranslate
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.quicktranslate.tests
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/QuickTranslate.app/Contents/MacOS/QuickTranslate"
+        BUNDLE_LOADER: "$(TEST_HOST)"

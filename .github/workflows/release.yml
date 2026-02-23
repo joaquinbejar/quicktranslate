@@ -1,0 +1,135 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Release
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build release binary
+        run: swift build -c release
+
+      - name: Create .app bundle
+        run: |
+          APP_NAME="QuickTranslate"
+          BUILD_DIR=".build/release"
+          APP_BUNDLE="${BUILD_DIR}/${APP_NAME}.app"
+          CONTENTS="${APP_BUNDLE}/Contents"
+          MACOS_DIR="${CONTENTS}/MacOS"
+          RESOURCES="${CONTENTS}/Resources"
+
+          mkdir -p "${MACOS_DIR}" "${RESOURCES}"
+
+          # Executable
+          cp "${BUILD_DIR}/${APP_NAME}" "${MACOS_DIR}/${APP_NAME}"
+
+          # Info.plist
+          cp "${APP_NAME}/Info.plist" "${CONTENTS}/Info.plist"
+
+          # Icon
+          if [ -f "${APP_NAME}/Resources/AppIcon.icns" ]; then
+            cp "${APP_NAME}/Resources/AppIcon.icns" "${RESOURCES}/AppIcon.icns"
+            /usr/libexec/PlistBuddy -c "Delete :CFBundleIconFile" "${CONTENTS}/Info.plist" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" "${CONTENTS}/Info.plist"
+          fi
+
+          # Update version in Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${{ steps.version.outputs.VERSION }}" "${CONTENTS}/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :LSUIElement true" "${CONTENTS}/Info.plist" 2>/dev/null || \
+            /usr/libexec/PlistBuddy -c "Add :LSUIElement bool true" "${CONTENTS}/Info.plist"
+
+          # PkgInfo
+          echo "APPL????" > "${CONTENTS}/PkgInfo"
+
+      - name: Create DMG
+        run: |
+          APP_NAME="QuickTranslate"
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          BUILD_DIR=".build/release"
+          DMG_NAME="${APP_NAME}-${VERSION}-macOS.dmg"
+
+          mkdir -p "${BUILD_DIR}/dmg-stage"
+          cp -R "${BUILD_DIR}/${APP_NAME}.app" "${BUILD_DIR}/dmg-stage/"
+          ln -sf /Applications "${BUILD_DIR}/dmg-stage/Applications"
+
+          hdiutil create -volname "${APP_NAME}" \
+            -srcfolder "${BUILD_DIR}/dmg-stage" \
+            -ov -format UDZO \
+            "${BUILD_DIR}/${DMG_NAME}"
+
+          rm -rf "${BUILD_DIR}/dmg-stage"
+          echo "DMG_PATH=${BUILD_DIR}/${DMG_NAME}" >> "$GITHUB_ENV"
+          echo "DMG_NAME=${DMG_NAME}" >> "$GITHUB_ENV"
+
+      - name: Create ZIP of .app
+        run: |
+          APP_NAME="QuickTranslate"
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          BUILD_DIR=".build/release"
+          ZIP_NAME="${APP_NAME}-${VERSION}-macOS.zip"
+
+          cd "${BUILD_DIR}"
+          zip -r -y "${ZIP_NAME}" "${APP_NAME}.app"
+          cd -
+
+          echo "ZIP_PATH=${BUILD_DIR}/${ZIP_NAME}" >> "$GITHUB_ENV"
+          echo "ZIP_NAME=${ZIP_NAME}" >> "$GITHUB_ENV"
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          cat <<'EOF' > /tmp/release_notes.md
+          ## QuickTranslate ${{ github.ref_name }}
+
+          A macOS menu bar app that translates selected text in-place using the DeepL API.
+
+          ### Installation
+
+          **Option 1 — DMG (recommended):**
+          1. Download `${{ env.DMG_NAME }}`
+          2. Open the DMG and drag **QuickTranslate** to **Applications**
+
+          **Option 2 — ZIP:**
+          1. Download `${{ env.ZIP_NAME }}`
+          2. Unzip and move `QuickTranslate.app` to `/Applications`
+
+          **Option 3 — Build from source:**
+          ```bash
+          git clone https://github.com/joaquinbejar/quicktranslate.git
+          cd quicktranslate
+          make install
+          ```
+
+          ### Requirements
+          - macOS 13.0+
+          - A [DeepL API Free](https://www.deepl.com/pro-api) key
+
+          ### First Launch
+          1. Grant **Accessibility** permission when prompted
+          2. Click the globe icon in the menu bar → **Settings...** → paste your DeepL API key
+          3. Select text anywhere and press **⌘⇧E** (English) or **⌘⇧S** (Spanish)
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: QuickTranslate ${{ github.ref_name }}
+          body_path: /tmp/release_notes.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            ${{ env.DMG_PATH }}
+            ${{ env.ZIP_PATH }}
