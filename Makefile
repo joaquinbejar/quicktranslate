@@ -33,8 +33,11 @@ app: build
 	@mkdir -p $(MACOS_DIR) $(RESOURCES)
 	@# Executable
 	@cp $(BUILD_DIR)/$(APP_NAME) $(MACOS_DIR)/$(APP_NAME)
-	@# Info.plist
+	@# Info.plist — copy and resolve Xcode variables
 	@cp $(APP_NAME)/Info.plist $(CONTENTS)/Info.plist
+	@/usr/libexec/PlistBuddy -c "Set :CFBundleExecutable $(APP_NAME)" $(CONTENTS)/Info.plist
+	@/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $(BUNDLE_ID)" $(CONTENTS)/Info.plist
+	@/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $(VERSION)" $(CONTENTS)/Info.plist
 	@# Icon
 	@if [ -f $(APP_NAME)/Resources/AppIcon.icns ]; then \
 		cp $(APP_NAME)/Resources/AppIcon.icns $(RESOURCES)/AppIcon.icns; \
@@ -46,7 +49,9 @@ app: build
 		/usr/libexec/PlistBuddy -c "Add :LSUIElement bool true" $(CONTENTS)/Info.plist
 	@# PkgInfo
 	@echo "APPL????" > $(CONTENTS)/PkgInfo
-	@echo "✅ $(APP_BUNDLE) created"
+	@# Ad-hoc code sign to avoid Gatekeeper "damaged" error
+	@codesign --force --deep --sign - $(APP_BUNDLE)
+	@echo "✅ $(APP_BUNDLE) created (signed)"
 
 # ── Install ──────────────────────────────────────────────────────────────
 

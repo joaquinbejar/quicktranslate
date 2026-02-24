@@ -37,8 +37,13 @@ jobs:
           # Executable
           cp "${BUILD_DIR}/${APP_NAME}" "${MACOS_DIR}/${APP_NAME}"
 
-          # Info.plist
+          # Info.plist — copy and resolve Xcode placeholder variables
           cp "${APP_NAME}/Info.plist" "${CONTENTS}/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable ${APP_NAME}" "${CONTENTS}/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.quicktranslate.app" "${CONTENTS}/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${{ steps.version.outputs.VERSION }}" "${CONTENTS}/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :LSUIElement true" "${CONTENTS}/Info.plist" 2>/dev/null || \
+            /usr/libexec/PlistBuddy -c "Add :LSUIElement bool true" "${CONTENTS}/Info.plist"
 
           # Icon
           if [ -f "${APP_NAME}/Resources/AppIcon.icns" ]; then
@@ -47,13 +52,11 @@ jobs:
             /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" "${CONTENTS}/Info.plist"
           fi
 
-          # Update version in Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${{ steps.version.outputs.VERSION }}" "${CONTENTS}/Info.plist"
-          /usr/libexec/PlistBuddy -c "Set :LSUIElement true" "${CONTENTS}/Info.plist" 2>/dev/null || \
-            /usr/libexec/PlistBuddy -c "Add :LSUIElement bool true" "${CONTENTS}/Info.plist"
-
           # PkgInfo
           echo "APPL????" > "${CONTENTS}/PkgInfo"
+
+          # Ad-hoc code sign
+          codesign --force --deep --sign - "${APP_BUNDLE}"
 
       - name: Create DMG
         run: |
