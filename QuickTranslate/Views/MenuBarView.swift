@@ -3,7 +3,7 @@ import SwiftUI
 /// The menu bar popover content showing app status, shortcuts, and actions.
 struct MenuBarView: View {
     @ObservedObject var coordinator: AppCoordinator
-    let keychainVault: KeychainVault
+    @ObservedObject var preferences: UserPreferences
     @State private var showSettings = false
 
     var body: some View {
@@ -29,6 +29,23 @@ struct MenuBarView: View {
                 }
             }
             .font(.subheadline)
+
+            // Provider info
+            HStack(spacing: 4) {
+                Text("Provider:")
+                    .foregroundColor(.secondary)
+                Text("\(preferences.selectedProvider.displayName)")
+            }
+            .font(.subheadline)
+
+            if preferences.selectedProvider.supportsModelSelection {
+                HStack(spacing: 4) {
+                    Text("Model:")
+                        .foregroundColor(.secondary)
+                    Text(preferences.selectedModel)
+                }
+                .font(.subheadline)
+            }
 
             // API Key status
             HStack(spacing: 4) {
@@ -91,22 +108,24 @@ struct MenuBarView: View {
             .keyboardShortcut("q")
         }
         .padding(12)
-        .frame(width: 240)
+        .frame(width: 260)
     }
 
     // MARK: - Helpers
 
     private var apiKeyConfigured: Bool {
-        (try? keychainVault.retrieve()) != nil
+        let vault = KeychainVault(serviceIdentifier: preferences.selectedProvider.keychainServiceId)
+        return (try? vault.retrieve()) != nil
     }
 
     private func openSettings() {
-        let settingsView = SettingsView(keychainVault: keychainVault)
+        let settingsView = SettingsView(preferences: preferences)
         let hostingController = NSHostingController(rootView: settingsView)
         let window = NSWindow(contentViewController: hostingController)
         window.title = "QuickTranslate Settings"
-        window.setContentSize(NSSize(width: 420, height: 300))
-        window.styleMask = [.titled, .closable]
+        window.setContentSize(NSSize(width: 540, height: 600))
+        window.styleMask = [.titled, .closable, .resizable]
+        window.minSize = NSSize(width: 520, height: 500)
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)

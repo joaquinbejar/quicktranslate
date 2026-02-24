@@ -6,28 +6,26 @@ import SwiftUI
 struct QuickTranslateApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var coordinator: AppCoordinator
-
-    private let keychainVault: KeychainVault
+    @StateObject private var preferences: UserPreferences
 
     init() {
-        let vault = KeychainVault()
-        let translator = DeepLTranslator(keychainVault: vault)
+        let prefs = UserPreferences()
         let clipboard = ClipboardGateway()
         let hotkeyManager = HotkeyManager()
 
         let coord = AppCoordinator(
-            translationService: translator,
+            preferences: prefs,
             clipboard: clipboard,
             hotkeyManager: hotkeyManager
         )
 
         _coordinator = StateObject(wrappedValue: coord)
-        keychainVault = vault
+        _preferences = StateObject(wrappedValue: prefs)
     }
 
     var body: some Scene {
         MenuBarExtra("QuickTranslate", systemImage: "globe") {
-            MenuBarView(coordinator: coordinator, keychainVault: keychainVault)
+            MenuBarView(coordinator: coordinator, preferences: preferences)
         }
     }
 }

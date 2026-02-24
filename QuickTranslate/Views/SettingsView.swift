@@ -1,22 +1,80 @@
 import SwiftUI
 
-/// Settings view for configuring the DeepL API key.
+/// Settings view for configuring the translation provider, model, API key, and system prompt.
 struct SettingsView: View {
-    let keychainVault: KeychainVault
+    @ObservedObject var preferences: UserPreferences
 
     @State private var apiKeyInput = ""
     @State private var statusMessage = ""
     @State private var statusIsError = false
     @State private var isTesting = false
     @State private var showDeleteConfirmation = false
+    @State private var showResetPromptConfirmation = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("DeepL API Key")
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                providerSection
+                modelSection
+                apiKeySection
+                promptSection
+            }
+            .padding(24)
+        }
+        .frame(minWidth: 520, minHeight: 560)
+        .onAppear {
+            loadExistingKey()
+        }
+        .onChange(of: preferences.selectedProvider) { _ in
+            loadExistingKey()
+        }
+    }
+
+    // MARK: - Provider Section
+
+    private var providerSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Translation Provider")
                 .font(.title2)
                 .fontWeight(.semibold)
 
-            Text("Enter your DeepL API Free key. You can get one at [deepl.com/pro-api](https://www.deepl.com/pro-api).")
+            Picker("Provider", selection: $preferences.selectedProvider) {
+                ForEach(TranslationProvider.allCases, id: \.self) { provider in
+                    Text(provider.displayName).tag(provider)
+                }
+            }
+            .pickerStyle(.segmented)
+        }
+    }
+
+    // MARK: - Model Section
+
+    @ViewBuilder
+    private var modelSection: some View {
+        if preferences.selectedProvider.supportsModelSelection {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Model")
+                    .font(.headline)
+
+                Picker("Model", selection: $preferences.selectedModel) {
+                    ForEach(preferences.selectedProvider.models, id: \.self) { model in
+                        Text(model).tag(model)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(maxWidth: 300)
+            }
+        }
+    }
+
+    // MARK: - API Key Section
+
+    private var apiKeySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("\(preferences.selectedProvider.displayName) API Key")
+                .font(.headline)
+
+            Text("Get your API key at [\(preferences.selectedProvider.apiKeyURL)](\(preferences.selectedProvider.apiKeyURL))")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
 
@@ -46,7 +104,7 @@ struct SettingsView: View {
                         clearKey()
                     }
                 } message: {
-                    Text("This will remove your stored DeepL API key.")
+                    Text("This will remove your stored \(preferences.selectedProvider.displayName) API key.")
                 }
             }
 
@@ -63,34 +121,72 @@ struct SettingsView: View {
                 ProgressView("Testing...")
                     .font(.subheadline)
             }
-
-            Spacer()
         }
-        .padding(24)
-        .frame(minWidth: 420, minHeight: 280)
-        .onAppear {
-            loadExistingKey()
+    }
+
+    // MARK: - System Prompt Section
+
+    @ViewBuilder
+    private var promptSection: some View {
+        if preferences.selectedProvider.supportsSystemPrompt {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("System Prompt")
+                        .font(.headline)
+
+                    Spacer()
+
+                    Button("Reset to Default") {
+                        showResetPromptConfirmation = true
+                    }
+                    .font(.subheadline)
+                    .alert("Reset System Prompt?", isPresented: $showResetPromptConfirmation) {
+                        Button("Cancel", role: .cancel) {}
+                        Button("Reset", role: .destructive) {
+                            preferences.resetPromptToDefault()
+                        }
+                    } message: {
+                        Text("This will restore the default translation prompt.")
+                    }
+                }
+
+                Text("Use `{target_language}` as a placeholder for the target language.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+
+                TextEditor(text: $preferences.systemPrompt)
+                    .font(.system(.body, design: .monospaced))
+                    .frame(minHeight: 120)
+                    .border(Color.secondary.opacity(0.3), width: 1)
+                    .cornerRadius(4)
+            }
         }
     }
 
     // MARK: - Helpers
 
+    private var currentVault: KeychainVault {
+        KeychainVault(serviceIdentifier: preferences.selectedProvider.keychainServiceId)
+    }
+
     private var keyExists: Bool {
-        (try? keychainVault.retrieve()) != nil
+        (try? currentVault.retrieve()) != nil
     }
 
     private func loadExistingKey() {
-        if let key = try? keychainVault.retrieve() {
-            // Show masked version
+        if let key = try? currentVault.retrieve() {
             apiKeyInput = key
+        } else {
+            apiKeyInput = ""
         }
+        statusMessage = ""
     }
 
     private func saveKey() {
         let trimmed = apiKeyInput.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
         do {
-            try keychainVault.save(apiKey: trimmed)
+            try currentVault.save(apiKey: trimmed)
             statusMessage = "API key saved successfully."
             statusIsError = false
         } catch {
@@ -105,13 +201,26 @@ struct SettingsView: View {
 
         Task {
             do {
-                // Ensure the current input is saved before testing
                 let keyToTest = apiKeyInput.trimmingCharacters(in: .whitespaces)
                 if !keyToTest.isEmpty {
-                    try keychainVault.save(apiKey: keyToTest)
+                    try currentVault.save(apiKey: keyToTest)
                 }
 
-                let translator = DeepLTranslator(keychainVault: keychainVault)
+                let translator: TranslationService
+                let provider = preferences.selectedProvider
+
+                switch provider {
+                case .deepl:
+                    translator = DeepLTranslator(keychainVault: currentVault)
+                case .openai, .gemini, .claude:
+                    translator = LLMTranslator(
+                        provider: provider,
+                        model: preferences.selectedModel,
+                        keychainVault: currentVault,
+                        preferences: preferences
+                    )
+                }
+
                 let request = TranslationRequest(sourceText: "Hello", targetLanguage: .spanish)
                 let result = try await translator.translate(request)
 
@@ -132,7 +241,7 @@ struct SettingsView: View {
 
     private func clearKey() {
         do {
-            try keychainVault.delete()
+            try currentVault.delete()
             apiKeyInput = ""
             statusMessage = "API key cleared."
             statusIsError = false

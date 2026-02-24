@@ -16,7 +16,7 @@ enum TranslationError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noApiKey:
-            return "No API key configured. Open Settings to add your DeepL API key."
+            return "No API key configured. Open Settings to add your API key."
         case .networkError:
             return "Network error. Check your internet connection."
         case .invalidResponse:

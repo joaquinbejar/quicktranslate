@@ -19,23 +19,23 @@ final class AppCoordinator: ObservableObject {
 
     // MARK: - Dependencies
 
-    private let translationService: TranslationService
     private let clipboard: ClipboardGateway
     private let hotkeyManager: HotkeyManager
+    private let preferences: UserPreferences
     private let logger = Logger(subsystem: "com.quicktranslate", category: "AppCoordinator")
 
     /// Creates a new coordinator and wires up the hotkey callbacks.
     ///
     /// - Parameters:
-    ///   - translationService: The backend used for translating text.
+    ///   - preferences: User preferences for provider/model/prompt selection.
     ///   - clipboard: Gateway for clipboard read/write.
     ///   - hotkeyManager: Manages global keyboard shortcuts.
     init(
-        translationService: TranslationService,
+        preferences: UserPreferences,
         clipboard: ClipboardGateway,
         hotkeyManager: HotkeyManager
     ) {
-        self.translationService = translationService
+        self.preferences = preferences
         self.clipboard = clipboard
         self.hotkeyManager = hotkeyManager
 
@@ -64,6 +64,25 @@ final class AppCoordinator: ObservableObject {
 
     // MARK: - Translation Flow
 
+    /// Builds a `TranslationService` based on current user preferences.
+    private func buildTranslator() -> TranslationService {
+        let provider = preferences.selectedProvider
+        let model = preferences.selectedModel
+        let vault = KeychainVault(serviceIdentifier: provider.keychainServiceId)
+
+        switch provider {
+        case .deepl:
+            return DeepLTranslator(keychainVault: vault)
+        case .openai, .gemini, .claude:
+            return LLMTranslator(
+                provider: provider,
+                model: model,
+                keychainVault: vault,
+                preferences: preferences
+            )
+        }
+    }
+
     /// Executes the full capture → translate → replace sequence.
     ///
     /// - Parameter targetLanguage: The language to translate the selected text into.
@@ -75,7 +94,7 @@ final class AppCoordinator: ObservableObject {
 
         isTranslating = true
         lastError = nil
-        logger.info("Starting translation to \(targetLanguage.displayName)")
+        logger.info("Starting translation to \(targetLanguage.displayName) via \(self.preferences.selectedProvider.displayName)")
 
         do {
             // 1. Save current clipboard
@@ -100,9 +119,10 @@ final class AppCoordinator: ObservableObject {
 
             logger.info("Captured text (\(selectedText.count) chars)")
 
-            // 5. Translate
+            // 5. Translate using current provider
+            let translator = buildTranslator()
             let request = TranslationRequest(sourceText: selectedText, targetLanguage: targetLanguage)
-            let result = try await translationService.translate(request)
+            let result = try await translator.translate(request)
 
             // 6. Write translated text to clipboard and paste
             clipboard.write(result.translatedText)
