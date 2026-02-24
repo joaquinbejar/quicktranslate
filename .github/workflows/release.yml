@@ -3,10 +3,11 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   build-and-release:
@@ -133,3 +134,28 @@ jobs:
           files: |
             ${{ env.DMG_PATH }}
             ${{ env.ZIP_PATH }}
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push package to ghcr.io
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          REPO="${{ github.repository }}"
+          REPO_LOWER=$(echo "${REPO}" | tr '[:upper:]' '[:lower:]')
+
+          # Install oras CLI
+          brew install oras
+
+          # Push DMG as OCI artifact
+          oras push "ghcr.io/${REPO_LOWER}:${VERSION}" \
+            --artifact-type "application/vnd.quicktranslate.app" \
+            "${DMG_PATH}:application/x-apple-diskimage" \
+            "${ZIP_PATH}:application/zip"
+
+          # Also tag as latest
+          oras tag "ghcr.io/${REPO_LOWER}:${VERSION}" latest
