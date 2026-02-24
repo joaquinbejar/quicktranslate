@@ -135,14 +135,9 @@ jobs:
             ${{ env.DMG_PATH }}
             ${{ env.ZIP_PATH }}
 
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Push package to ghcr.io
+      - name: Push package to GitHub Container Registry
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
           REPO="${{ github.repository }}"
@@ -151,7 +146,10 @@ jobs:
           # Install oras CLI
           brew install oras
 
-          # Push DMG as OCI artifact
+          # Login to ghcr.io via oras
+          echo "${GH_TOKEN}" | oras login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+          # Push DMG and ZIP as OCI artifact
           oras push "ghcr.io/${REPO_LOWER}:${VERSION}" \
             --artifact-type "application/vnd.quicktranslate.app" \
             "${DMG_PATH}:application/x-apple-diskimage" \
