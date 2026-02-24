@@ -12,6 +12,8 @@ enum TranslationError: Error, LocalizedError {
     case rateLimited
     /// The selected text exceeds the maximum allowed length.
     case textTooLong
+    /// The API returned an error with a specific message.
+    case apiError(statusCode: Int, message: String)
 
     var errorDescription: String? {
         switch self {
@@ -25,6 +27,8 @@ enum TranslationError: Error, LocalizedError {
             return "Too many requests. Please wait a moment."
         case .textTooLong:
             return "Selected text is too long to translate."
+        case .apiError(let statusCode, let message):
+            return "API error (\(statusCode)): \(message)"
         }
     }
 }

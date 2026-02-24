@@ -83,7 +83,10 @@ final class AppCoordinator: ObservableObject {
         }
     }
 
-    /// Executes the full capture → translate → replace sequence.
+    /// Executes the translation flow.
+    ///
+    /// - English (⌘⇧E): In-place replacement — copies selected text, translates, pastes back.
+    /// - Spanish (⌘⇧S): Popup display — copies selected text, translates, shows floating popup.
     ///
     /// - Parameter targetLanguage: The language to translate the selected text into.
     func handleTranslation(to targetLanguage: TargetLanguage) async {
@@ -124,17 +127,31 @@ final class AppCoordinator: ObservableObject {
             let request = TranslationRequest(sourceText: selectedText, targetLanguage: targetLanguage)
             let result = try await translator.translate(request)
 
-            // 6. Write translated text to clipboard and paste
-            clipboard.write(result.translatedText)
-            simulatePaste()
-
-            // 7. Wait for paste to complete, then restore original clipboard (200 milliseconds)
-            try await Task.sleep(nanoseconds: 200_000_000)
-            clipboard.restore(savedClipboard)
-
             logger.info("Translation complete")
-            let preview = String(result.translatedText.prefix(80))
-            showHUD(text: preview, isError: false)
+
+            switch targetLanguage {
+            case .english:
+                // In-place replacement: paste translated text over selection
+                clipboard.write(result.translatedText)
+                simulatePaste()
+
+                // Wait for paste to complete, then restore original clipboard (200 milliseconds)
+                try await Task.sleep(nanoseconds: 200_000_000)
+                clipboard.restore(savedClipboard)
+
+                let preview = String(result.translatedText.prefix(80))
+                showHUD(text: preview, isError: false)
+
+            case .spanish:
+                // Popup display: show translation without modifying original text
+                clipboard.restore(savedClipboard)
+
+                TranslationPopup.show(
+                    originalText: selectedText,
+                    translatedText: result.translatedText,
+                    targetLanguage: targetLanguage.displayName
+                )
+            }
 
         } catch let error as TranslationError {
             let message = error.errorDescription ?? "Unknown translation error"

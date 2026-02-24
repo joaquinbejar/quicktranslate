@@ -12,8 +12,12 @@ final class HotkeyManager {
     /// Virtual keycode for the S key.
     static let kVKS: Int64 = 1
 
-    /// Callback fired when a translation hotkey is pressed.
+    /// Callback fired when a translation hotkey is pressed (key down).
     var onTranslationRequested: ((TargetLanguage) -> Void)?
+    /// Callback fired when the translation hotkey is released (key up or modifier released).
+    var onHotkeyReleased: (() -> Void)?
+    /// The language for the currently held hotkey, or `nil` if no hotkey is held.
+    private(set) var activeHotkey: TargetLanguage?
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -50,7 +54,11 @@ final class HotkeyManager {
             return
         }
 
-        let eventMask: CGEventMask = (1 << CGEventType.keyDown.rawValue)
+        let eventMask: CGEventMask = (
+            (1 << CGEventType.keyDown.rawValue)
+            | (1 << CGEventType.keyUp.rawValue)
+            | (1 << CGEventType.flagsChanged.rawValue)
+        )
 
         // Use an Unmanaged pointer to pass `self` into the C callback.
         let selfPointer = Unmanaged.passUnretained(self).toOpaque()
@@ -108,10 +116,20 @@ final class HotkeyManager {
         logger.info("Global hotkey event tap stopped")
     }
 
-    /// Called from the C callback when a matching hotkey is detected.
-    fileprivate func handleHotkey(_ language: TargetLanguage) {
-        logger.info("Hotkey triggered: translate to \(language.displayName)")
+    /// Called from the C callback when a matching hotkey is pressed.
+    fileprivate func handleHotkeyDown(_ language: TargetLanguage) {
+        guard activeHotkey == nil else { return } // Ignore repeats
+        activeHotkey = language
+        logger.info("Hotkey down: translate to \(language.displayName)")
         onTranslationRequested?(language)
+    }
+
+    /// Called from the C callback when the hotkey combination is released.
+    fileprivate func handleHotkeyUp() {
+        guard activeHotkey != nil else { return }
+        logger.info("Hotkey released")
+        activeHotkey = nil
+        onHotkeyReleased?()
     }
 }
 
@@ -129,29 +147,49 @@ private func hotkeyCallback(
         return Unmanaged.passUnretained(event)
     }
 
-    guard type == .keyDown, let userInfo else {
-        return Unmanaged.passUnretained(event)
-    }
-
-    let flags = event.flags
-    let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-
-    // Check for Cmd+Shift modifier combination.
-    let hasCmd = flags.contains(.maskCommand)
-    let hasShift = flags.contains(.maskShift)
-    guard hasCmd, hasShift else {
+    guard let userInfo else {
         return Unmanaged.passUnretained(event)
     }
 
     let manager = Unmanaged<HotkeyManager>.fromOpaque(userInfo).takeUnretainedValue()
+    let flags = event.flags
+    let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+    let hasCmd = flags.contains(.maskCommand)
+    let hasShift = flags.contains(.maskShift)
 
-    switch keyCode {
-    case HotkeyManager.kVKE:
-        manager.handleHotkey(.english)
-        return nil // Consume the event
-    case HotkeyManager.kVKS:
-        manager.handleHotkey(.spanish)
-        return nil // Consume the event
+    switch type {
+    case .keyDown:
+        guard hasCmd, hasShift else {
+            return Unmanaged.passUnretained(event)
+        }
+        switch keyCode {
+        case HotkeyManager.kVKE:
+            manager.handleHotkeyDown(.english)
+            return nil
+        case HotkeyManager.kVKS:
+            manager.handleHotkeyDown(.spanish)
+            return nil
+        default:
+            return Unmanaged.passUnretained(event)
+        }
+
+    case .keyUp:
+        // Release when the letter key (E or S) is released.
+        if manager.activeHotkey != nil,
+           keyCode == HotkeyManager.kVKE || keyCode == HotkeyManager.kVKS
+        {
+            manager.handleHotkeyUp()
+            return nil
+        }
+        return Unmanaged.passUnretained(event)
+
+    case .flagsChanged:
+        // Release when Cmd or Shift is released while hotkey is active.
+        if manager.activeHotkey != nil, !(hasCmd && hasShift) {
+            manager.handleHotkeyUp()
+        }
+        return Unmanaged.passUnretained(event)
+
     default:
         return Unmanaged.passUnretained(event)
     }

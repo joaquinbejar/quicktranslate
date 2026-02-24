@@ -21,11 +21,21 @@ enum TranslationProvider: String, CaseIterable, Codable, Sendable {
     var models: [String] {
         switch self {
         case .openai:
-            return ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"]
+            return [
+                "gpt-4o-mini", "gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo",
+                "o3-mini", "o1", "o1-mini",
+            ]
         case .gemini:
-            return ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+            return [
+                "gemini-2.5-flash", "gemini-2.5-pro",
+                "gemini-2.0-flash-lite",
+                "gemini-1.5-flash", "gemini-1.5-pro",
+            ]
         case .claude:
-            return ["claude-sonnet-4-20250514", "claude-3-5-haiku-latest", "claude-3-5-sonnet-latest"]
+            return [
+                "claude-sonnet-4-20250514", "claude-3-5-sonnet-latest",
+                "claude-3-5-haiku-latest", "claude-3-opus-latest",
+            ]
         case .deepl:
             return ["default"]
         }

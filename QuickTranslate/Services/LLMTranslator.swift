@@ -81,9 +81,11 @@ final class LLMTranslator: TranslationService {
         case 400...499:
             let body = String(data: responseData, encoding: .utf8) ?? "unknown"
             logger.error("Client error \(httpResponse.statusCode): \(body)")
-            throw TranslationError.invalidResponse
+            let message = extractErrorMessage(from: responseData) ?? body
+            throw TranslationError.apiError(statusCode: httpResponse.statusCode, message: message)
         default:
-            throw TranslationError.invalidResponse
+            let body = String(data: responseData, encoding: .utf8) ?? "unknown"
+            throw TranslationError.apiError(statusCode: httpResponse.statusCode, message: body)
         }
 
         let translatedText = try extractText(from: responseData)
@@ -150,13 +152,13 @@ final class LLMTranslator: TranslationService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let body: [String: Any] = [
-            "systemInstruction": [
+            "system_instruction": [
                 "parts": [["text": systemPrompt]]
             ],
             "contents": [
-                ["parts": [["text": userText]]]
+                ["role": "user", "parts": [["text": userText]]]
             ],
-            "generationConfig": [
+            "generation_config": [
                 "temperature": 0.3
             ],
         ]
@@ -189,6 +191,30 @@ final class LLMTranslator: TranslationService {
         let data = try JSONSerialization.data(withJSONObject: body)
         request.httpBody = data
         return (request, data)
+    }
+
+    // MARK: - Error Extraction
+
+    /// Attempts to extract a human-readable error message from an API error response.
+    private func extractErrorMessage(from data: Data) -> String? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+
+        // OpenAI: {"error": {"message": "..."}}
+        if let error = json["error"] as? [String: Any], let msg = error["message"] as? String {
+            return msg
+        }
+        // Gemini: {"error": {"message": "...", "status": "..."}}
+        if let error = json["error"] as? [String: Any], let msg = error["message"] as? String {
+            return msg
+        }
+        // Claude: {"error": {"message": "..."}} or {"type": "error", "error": {"message": "..."}}
+        if let error = json["error"] as? [String: Any], let msg = error["message"] as? String {
+            return msg
+        }
+
+        return nil
     }
 
     // MARK: - Response Parsing

@@ -74,9 +74,18 @@ struct SettingsView: View {
             Text("\(preferences.selectedProvider.displayName) API Key")
                 .font(.headline)
 
-            Text("Get your API key at [\(preferences.selectedProvider.apiKeyURL)](\(preferences.selectedProvider.apiKeyURL))")
+            HStack(spacing: 4) {
+                Text("Get your API key at")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                Button(preferences.selectedProvider.apiKeyURL) {
+                    if let url = URL(string: preferences.selectedProvider.apiKeyURL) {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                .buttonStyle(.link)
                 .font(.subheadline)
-                .foregroundColor(.secondary)
+            }
 
             SecureField("Paste your API key here", text: $apiKeyInput)
                 .textFieldStyle(.roundedBorder)
