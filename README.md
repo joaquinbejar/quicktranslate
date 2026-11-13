@@ -141,7 +141,7 @@ We welcome contributions to this project! If you would like to contribute, pleas
 If you have any questions, issues, or would like to provide feedback, please feel free to contact the project
 maintainer:
 
-### Contact Information
+### **Contact Information**
 - **Author**: Joaquín Béjar García
 - **Email**: jb@taunais.com
 - **Telegram**: [@joaquin_bejar](https://t.me/joaquin_bejar)
@@ -150,3 +150,10 @@ maintainer:
 We appreciate your interest and look forward to your contributions!
 
 **License**: MIT
+
+<!-- related-projects:start -->
+## Related projects
+
+No other repositories by the same author depend on this project, and it depends on none of them. See all repositories at <https://github.com/joaquinbejar?tab=repositories>.
+
+<!-- related-projects:end -->
